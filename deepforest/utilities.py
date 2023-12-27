@@ -17,6 +17,8 @@ from tqdm import tqdm
 from deepforest import _ROOT
 import geopandas as gpd
 from shapely.geometry import Point
+import geopandas as gpd
+from shapely.geometry import Point
 
 
 def read_config(config_path):

@@ -15,6 +15,9 @@ import rasterio
 import geopandas as gpd
 from deepforest.utilities import pandas_to_geopandas
 from shapely import geometry
+import geopandas as gpd
+from deepforest.utilities import pandas_to_geopandas
+from shapely import geometry
 
 def preprocess_image(image):
     """Preprocess a single RGB numpy array as a prediction from channels last, to channels first"""
@@ -207,12 +210,13 @@ def split_raster(annotations_file=None,
         annotations = annotations_file
     else:
         raise TypeError(
-            "Annotations file must either be None, a path, or a gpd.DataFrame, found {}".
+            "Annotations file must either be None, a path, or a ggpd.DataFrame, found {}".
             format(type(annotations_file)))
 
     # Select matching annotations
     if annotations_file is not None:
         image_annotations = annotations[annotations.image_path == image_name]
+    image_basename = os.path.splitext(image_name)[0]
     image_basename = os.path.splitext(image_name)[0]
 
     # Sanity checks
