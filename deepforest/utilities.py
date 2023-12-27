@@ -284,7 +284,10 @@ def shapefile_to_annotations(shapefile,
         results: a pandas dataframe
     """
     # Read shapefile
-    gdf = gpd.read_file(shapefile)
+    if isinstance(shapefile, str):
+        gdf = gpd.read_file(shapefile)
+    else:
+        gdf = shapefile
 
     # Determine geometry type and report to user
     if gdf.geometry.type.unique().shape[0] > 1:
