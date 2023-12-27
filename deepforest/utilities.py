@@ -391,6 +391,7 @@ def pandas_to_geopandas(df):
     
     # convert to geodataframe
     df = gpd.GeoDataFrame(df, geometry='geometry')
+    
     # remove any of the csv columns
     df = df.drop(columns=["polygon", "x", "y","xmin","ymin","xmax","ymax"], errors="ignore")
                           

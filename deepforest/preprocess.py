@@ -75,6 +75,9 @@ def select_annotations(annotations, window):
     original_area = selected_annotations.geometry.area
     clipped_annotations = gpd.clip(selected_annotations, window_box)
 
+    if clipped_annotations.empty:
+        return clipped_annotations
+    
     # For points, keep all annotations.
     if selected_annotations.iloc[0].geometry.type == "Point":
         return selected_annotations
