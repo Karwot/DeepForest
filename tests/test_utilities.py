@@ -19,12 +19,11 @@ def config():
     config = utilities.read_config("deepforest_config.yml")
     return config
 
-
 def test_xml_to_annotations():
     annotations = utilities.xml_to_annotations(
         xml_path=get_data("OSBS_029.xml"))
     print(annotations.shape)
-    assert annotations.shape == (61, 6)
+    assert annotations.shape[0] == 61
 
     # bounding box extents should be int
     assert annotations["xmin"].dtype == np.int64
@@ -130,3 +129,83 @@ def test_boxes_to_shapefile_unprojected(m, flip_y_axis, projected):
     # Confirm that each boxes within image bounds
     geom = geometry.box(*r.bounds)
     assert all(gdf.geometry.apply(lambda x: geom.intersects(geom)).values)
+
+def test_shapefile_to_annotations_boxes_projected(tmpdir):
+    sample_geometry = [geometry.Point(404211.9 + 10,3285102 + 20),geometry.Point(404211.9 + 20,3285102 + 20)]
+    labels = ["Tree","Tree"]
+    df = pd.DataFrame({"geometry":sample_geometry,"label":labels})
+    gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:32617")
+    gdf["geometry"] = [geometry.box(left, bottom, right, top) for left, bottom, right, top in gdf.geometry.buffer(0.5).bounds.values]
+    
+    gdf.to_file("{}/test_shapefile_to_annotations_boxes_projected.shp".format(tmpdir))
+    image_path = get_data("OSBS_029.tif")
+    shp = utilities.shapefile_to_annotations(shapefile="{}/test_shapefile_to_annotations_boxes_projected.shp".format(tmpdir), rgb=image_path, savedir=tmpdir)
+    assert shp.shape[0] == 2
+
+def test_shapefile_to_annotations_polygons_projected(tmpdir):
+    sample_geometry = [geometry.Point(404211.9 + 10,3285102 + 20),geometry.Point(404211.9 + 20,3285102 + 20)]
+    labels = ["Tree", "Tree"]
+    df = pd.DataFrame({"geometry": sample_geometry, "label": labels})
+    gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:32617")
+    gdf["geometry"] = [geometry.Polygon([(left, bottom), (left, top), (right, top), (right, bottom)]) for left, bottom, right, top in gdf.geometry.buffer(0.5).bounds.values]
+    gdf.to_file("{}/test_shapefile_to_annotations_polygons_projected.shp".format(tmpdir))
+    image_path = get_data("OSBS_029.tif")
+    shp = utilities.shapefile_to_annotations(shapefile="{}/test_shapefile_to_annotations_polygons_projected.shp".format(tmpdir), rgb=image_path, savedir=tmpdir)
+    assert shp.shape[0] == 2
+
+def test_shapefile_to_annotations_points_projected(tmpdir):
+    sample_geometry = [geometry.Point(404211.9 + 10,3285102 + 20),geometry.Point(404211.9 + 20,3285102 + 20)]
+    labels = ["Tree", "Tree"]
+    df = pd.DataFrame({"geometry": sample_geometry, "label": labels})
+    gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:32617")
+    gdf.to_file("{}/test_shapefile_to_annotations_points_projected.shp".format(tmpdir))
+    image_path = get_data("OSBS_029.tif")
+    shp = utilities.shapefile_to_annotations(shapefile="{}/test_shapefile_to_annotations_points_projected.shp".format(tmpdir), rgb=image_path, savedir=tmpdir)
+    assert shp.shape[0] == 2
+    assert shp.geometry.iloc[0].type == "Point"
+
+def test_shapefile_to_annotations_boxes_unprojected(tmpdir):
+    # Create a sample GeoDataFrame with box geometries
+    sample_geometry = [geometry.box(0, 0, 1, 1), geometry.box(2, 2, 3, 3)]
+    labels = ["Tree", "Tree"]
+    df = pd.DataFrame({"geometry": sample_geometry, "label": labels})
+    gdf = gpd.GeoDataFrame(df, geometry="geometry")
+    gdf.to_file("{}/test_shapefile_to_annotations_boxes_unprojected.shp".format(tmpdir))
+    image_path = get_data("OSBS_029.png")
+    annotations = utilities.shapefile_to_annotations(shapefile="{}/test_shapefile_to_annotations_boxes_unprojected.shp".format(tmpdir), rgb=image_path, savedir=tmpdir)
+
+    # Assert the expected number of annotations and geometry type
+    assert annotations.shape[0] == 2
+    assert annotations.geometry.iloc[0].type == "Polygon"
+
+def test_shapefile_to_annotations_points_unprojected(tmpdir):
+    # Create a sample GeoDataFrame with point geometries
+    sample_geometry = [geometry.Point(0.5, 0.5), geometry.Point(2.5, 2.5)]
+    labels = ["Tree", "Tree"]
+    df = pd.DataFrame({"geometry": sample_geometry, "label": labels})
+    gdf = gpd.GeoDataFrame(df, geometry="geometry")
+    gdf.to_file("{}/test_shapefile_to_annotations_points_unprojected.shp".format(tmpdir))
+    image_path = get_data("OSBS_029.png")
+
+    annotations = utilities.shapefile_to_annotations(shapefile="{}/test_shapefile_to_annotations_points_unprojected.shp".format(tmpdir), rgb=image_path, savedir=tmpdir)
+
+    # Assert the expected number of annotations
+    assert annotations.shape[0] == 2
+    assert annotations.geometry.iloc[0].type == "Point"
+
+def test_shapefile_to_annotations_polygons_unprojected(tmpdir):
+    # Create a sample GeoDataFrame with polygon geometries with 6 points
+    sample_geometry = [geometry.Polygon([(0, 0), (0, 2), (1, 1), (1, 0), (0, 0)]), geometry.Polygon([(2, 2), (2, 4), (3, 3), (3, 2), (2, 2)])]
+    
+    labels = ["Tree", "Tree"]
+    df = pd.DataFrame({"geometry": sample_geometry, "label": labels})
+    gdf = gpd.GeoDataFrame(df, geometry="geometry")
+    gdf.to_file("{}/test_shapefile_to_annotations_polygons_unprojected.shp".format(tmpdir))
+    image_path = get_data("OSBS_029.png")
+
+    # Call the function under test
+    annotations = utilities.shapefile_to_annotations(shapefile="{}/test_shapefile_to_annotations_polygons_unprojected.shp".format(tmpdir), rgb=image_path, savedir=tmpdir)
+
+    # Assert the expected number of annotations
+    assert annotations.shape[0] == 2
+    assert annotations.geometry.iloc[0].type == "Polygon"

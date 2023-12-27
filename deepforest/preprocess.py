@@ -5,7 +5,6 @@ training or prediction.
 For example cutting large tiles into smaller images.
 """
 import os
-
 import numpy as np
 import pandas as pd
 import slidingwindow
@@ -13,7 +12,9 @@ from PIL import Image
 import torch
 import warnings
 import rasterio
-
+import geopandas as gpd
+from deepforest.utilities import pandas_to_geopandas
+from shapely import geometry
 
 def preprocess_image(image):
     """Preprocess a single RGB numpy array as a prediction from channels last, to channels first"""
@@ -51,77 +52,35 @@ def compute_windows(numpy_image, patch_size, patch_overlap):
 
     return (windows)
 
-
-def select_annotations(annotations, windows, index, allow_empty=False):
+def select_annotations(annotations, window):
     """Select annotations that overlap with selected image crop.
 
     Args:
-        image_name (str): Name of the image in the annotations file to lookup.
-        annotations_file: path to annotations file in
-            the format -> image_path, xmin, ymin, xmax, ymax, label
+        annotations: a geopandas dataframe of annotations with a geometry column
         windows: A sliding window object (see compute_windows)
-        index: The index in the windows object to use a crop bounds
-        allow_empty (bool): If True, allow window crops
-            that have no annotations to be included
-
     Returns:
         selected_annotations: a pandas dataframe of annotations
     """
+    window_xmin, window_ymin, w, h = window.getRect()
+    
+    # Create a shapely box from the window
+    window_box = geometry.box(window_xmin, window_ymin, window_xmin + w, window_ymin + h)
+    selected_annotations = annotations[annotations.intersects(window_box)]
+    selected_annotations.geometry = selected_annotations.geometry.translate(xoff=-window_xmin, yoff=-window_ymin)
 
-    # Window coordinates - with respect to tile
-    window_xmin, window_ymin, w, h = windows[index].getRect()
-    window_xmax = window_xmin + w
-    window_ymax = window_ymin + h
+    # cut off any annotations over the border
+    original_area = selected_annotations.geometry.area
+    clipped_annotations = gpd.clip(selected_annotations, window_box)
 
-    # buffer coordinates a bit to grab boxes that might start just against
-    # the image edge. Don't allow boxes that start and end after the offset
-    offset = 40
-    selected_annotations = annotations[(annotations.xmin > (window_xmin - offset)) &
-                                       (annotations.xmin < (window_xmax)) &
-                                       (annotations.xmax >
-                                        (window_xmin)) & (annotations.ymin >
-                                                          (window_ymin - offset)) &
-                                       (annotations.xmax < (window_xmax + offset)) &
-                                       (annotations.ymin <
-                                        (window_ymax)) & (annotations.ymax >
-                                                          (window_ymin)) &
-                                       (annotations.ymax <
-                                        (window_ymax + offset))].copy(deep=True)
-    # change the image name
-    image_basename = os.path.splitext("{}".format(annotations.image_path.unique()[0]))[0]
-    selected_annotations.image_path = "{}_{}.png".format(image_basename, index)
-
-    # If no matching annotations, return a line with the image name, but no
-    # records
-    if selected_annotations.empty:
-        if allow_empty:
-            selected_annotations = pd.DataFrame(
-                ["{}_{}.png".format(image_basename, index)], columns=["image_path"])
-            selected_annotations["xmin"] = 0
-            selected_annotations["ymin"] = 0
-            selected_annotations["xmax"] = 0
-            selected_annotations["ymax"] = 0
-            # Dummy label
-            selected_annotations["label"] = annotations.label.unique()[0]
-        else:
-            return None
+    # For points, keep all annotations.
+    if selected_annotations.iloc[0].geometry.type == "Point":
+        return selected_annotations
     else:
-        # update coordinates with respect to origin
-        selected_annotations.xmax = (selected_annotations.xmin - window_xmin) + (
-            selected_annotations.xmax - selected_annotations.xmin)
-        selected_annotations.xmin = (selected_annotations.xmin - window_xmin)
-        selected_annotations.ymax = (selected_annotations.ymin - window_ymin) + (
-            selected_annotations.ymax - selected_annotations.ymin)
-        selected_annotations.ymin = (selected_annotations.ymin - window_ymin)
-
-        # cut off any annotations over the border.
-        selected_annotations.loc[selected_annotations.xmin < 0, "xmin"] = 0
-        selected_annotations.loc[selected_annotations.xmax > w, "xmax"] = w
-        selected_annotations.loc[selected_annotations.ymin < 0, "ymin"] = 0
-        selected_annotations.loc[selected_annotations.ymax > h, "ymax"] = h
-
-    return selected_annotations
-
+        # Only keep clipped boxes if they are more than 50% of the original size.
+        clipped_area = clipped_annotations.geometry.area
+        clipped_annotations = clipped_annotations[(clipped_area/original_area) > 0.5]
+        
+    return clipped_annotations
 
 def save_crop(base_dir, image_name, index, crop):
     """
@@ -164,8 +123,7 @@ def split_raster(annotations_file=None,
                  allow_empty=False,
                  image_name=None,
                  save_dir="."):
-    """Divide a large tile into smaller arrays. Each crop will be saved to
-    file.
+    """Divide a large tile into smaller arrays. Each crop will be saved to file.
 
     Args:
         numpy_image: a numpy object to be used as a raster, usually opened from rasterio.open.read(), in order (height, width, channels)
@@ -244,17 +202,18 @@ def split_raster(annotations_file=None,
     if annotations_file is None:
         allow_empty = True
     elif isinstance(annotations_file, str):
-        annotations = pd.read_csv(annotations_file)
-    elif isinstance(annotations_file, pd.DataFrame):
+        annotations = pandas_to_geopandas(annotations_file)
+    elif isinstance(annotations_file, gpd.GeoDataFrame):
         annotations = annotations_file
     else:
         raise TypeError(
-            "Annotations file must either be None, a path, or a pd.DataFrame, found {}".
+            "Annotations file must either be None, a path, or a gpd.DataFrame, found {}".
             format(type(annotations_file)))
 
     # Select matching annotations
     if annotations_file is not None:
         image_annotations = annotations[annotations.image_path == image_name]
+    image_basename = os.path.splitext(image_name)[0]
 
     # Sanity checks
     if not allow_empty:
@@ -264,10 +223,6 @@ def split_raster(annotations_file=None,
                 "Reminder that image paths should be the relative "
                 "path (e.g. 'image_name.tif'), not the full path "
                 "(e.g. path/to/dir/image_name.tif)".format(annotations_file, image_name))
-
-        required_columns = ["image_path", "xmin", "ymin", "xmax", "ymax", "label"]
-        if not all(column in annotations.columns for column in required_columns):
-            raise ValueError(f"Annotations file should have columns {required_columns}")
 
     annotations_files = []
     crop_filenames = []
@@ -280,28 +235,25 @@ def split_raster(annotations_file=None,
             continue
 
         # Find annotations, image_name is the basename of the path
-        if annotations_file is not None:
-            crop_annotations = select_annotations(image_annotations, windows, index,
-                                                  allow_empty)
+        crop_annotations = select_annotations(image_annotations, window = windows[index])
+        
+        if crop_annotations.empty:
+            if allow_empty:
+                crop_annotations.loc[0, "image_path"] = "{}_{}.png".format(image_basename, index)
+            else:
+                raise ValueError(
+                    "Input file has no overlapping annotations and allow_empty is {}".format(
+                        allow_empty))
         else:
-            crop_annotations = None
+            crop_annotations["image_path"] = "{}_{}.png".format(image_basename, index)
 
-        # If empty images not allowed, select annotations returns None
-        if crop_annotations is not None:
-            # Save annotations
-            annotations_files.append(crop_annotations)
-
-        # Save image crop
-        if allow_empty or crop_annotations is not None:
-            crop_filename = save_crop(save_dir, image_name, index, crop)
-            crop_filenames.append(crop_filename)
-
-    if annotations_file is not None:
-        # Only concat annotations if there were supplied
-        if not annotations_files:
-            raise ValueError(
-                "Input file has no overlapping annotations and allow_empty is {}".format(
-                    allow_empty))
+        annotations_files.append(crop_annotations)
+        save_crop(save_dir, image_name, index, crop)
+    
+    if len(annotations_files) == 0:
+        raise ValueError(
+            "Input file has no overlapping annotations and allow_empty is {}".format(
+                allow_empty))
 
         annotations_files = pd.concat(annotations_files)
 
