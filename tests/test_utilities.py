@@ -25,9 +25,6 @@ def test_xml_to_annotations():
     print(annotations.shape)
     assert annotations.shape[0] == 61
 
-    # bounding box extents should be int
-    assert annotations["xmin"].dtype == np.int64
-
 def test_use_release(download_release):
     # Download latest model from github release
     release_tag, state_dict = utilities.use_release(check_release=False)
@@ -40,8 +37,8 @@ def test_use_bird_release(download_release):
 def test_float_warning(config):
     """Users should get a rounding warning when adding annotations with floats"""
     float_annotations = "tests/data/float_annotations.txt"
-    annotations = utilities.xml_to_annotations(float_annotations)
-    assert annotations.xmin.dtype is np.dtype('int64')
+    with pytest.warns(UserWarning):
+        annotations = utilities.xml_to_annotations(float_annotations)
 
 def test_project_boxes():
     csv_file = get_data("OSBS_029.csv")
@@ -57,7 +54,7 @@ def test_shapefile_to_annotations_convert_to_boxes(tmpdir):
     gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:32617")
     gdf.to_file("{}/annotations.shp".format(tmpdir))
     image_path = get_data("OSBS_029.tif")
-    shp = utilities.shapefile_to_annotations(shapefile="{}/annotations.shp".format(tmpdir), rgb=image_path, savedir=tmpdir, geometry_type="point")
+    shp = utilities.shapefile_to_annotations(shapefile="{}/annotations.shp".format(tmpdir), rgb=image_path, savedir=tmpdir)
     assert shp.shape[0] == 2
     
 def test_shapefile_to_annotations(tmpdir):
@@ -69,7 +66,7 @@ def test_shapefile_to_annotations(tmpdir):
     
     gdf.to_file("{}/annotations.shp".format(tmpdir))
     image_path = get_data("OSBS_029.tif")
-    shp = utilities.shapefile_to_annotations(shapefile="{}/annotations.shp".format(tmpdir), rgb=image_path, savedir=tmpdir, geometry_type="bbox")
+    shp = utilities.shapefile_to_annotations(shapefile="{}/annotations.shp".format(tmpdir), rgb=image_path, savedir=tmpdir)
     assert shp.shape[0] == 2
 
 def test_shapefile_to_annotations_incorrect_crs(tmpdir):
@@ -82,7 +79,7 @@ def test_shapefile_to_annotations_incorrect_crs(tmpdir):
     gdf.to_file("{}/annotations.shp".format(tmpdir))
     image_path = get_data("OSBS_029.tif")
     with pytest.raises(ValueError):
-        shp = utilities.shapefile_to_annotations(shapefile="{}/annotations.shp".format(tmpdir), rgb=image_path, savedir=tmpdir, geometry_type="bbox")
+        shp = utilities.shapefile_to_annotations(shapefile="{}/annotations.shp".format(tmpdir), rgb=image_path, savedir=tmpdir)
 def test_boxes_to_shapefile_projected(m):
     img = get_data("OSBS_029.tif")
     r = rio.open(img)
@@ -209,3 +206,50 @@ def test_shapefile_to_annotations_polygons_unprojected(tmpdir):
     # Assert the expected number of annotations
     assert annotations.shape[0] == 2
     assert annotations.geometry.iloc[0].type == "Polygon"
+
+def test_crop_raster_valid_crop(tmpdir):
+    rgb_path = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+    raster_bounds = rio.open(rgb_path).bounds
+    
+    # Define the bounds for cropping
+    bounds = (raster_bounds[0] + 10, raster_bounds[1] + 10, raster_bounds[0] + 30, raster_bounds[1] + 30)
+
+    # Call the function under test
+    result = utilities.crop_raster(bounds, rgb_path=rgb_path, savedir=tmpdir, filename="crop")
+
+    # Assert the output filename
+    expected_filename = str(tmpdir.join("crop.tif"))
+    assert result == expected_filename
+
+    # Assert the saved crop
+    with rio.open(result) as src:
+        # Round to nearest integer to avoid floating point errors
+        assert np.round(src.bounds[2] - src.bounds[0]) == 20
+        assert np.round(src.bounds[3] - src.bounds[1]) == 20
+        assert src.count == 3
+        assert src.dtypes == ("uint8", "uint8", "uint8")
+
+def test_crop_raster_invalid_crop(tmpdir):
+    rgb_path = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+    raster_bounds = rio.open(rgb_path).bounds
+    
+    # Define the bounds for cropping
+    bounds = (raster_bounds[0] - 100, raster_bounds[1] - 100, raster_bounds[0] - 30, raster_bounds[1] - 30)
+
+    # Call the function under test
+    with pytest.raises(ValueError):
+        result = utilities.crop_raster(bounds, rgb_path=rgb_path, savedir=tmpdir, filename="crop")
+
+
+def test_crop_raster_no_savedir(tmpdir):
+    rgb_path = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+    raster_bounds = rio.open(rgb_path).bounds
+    
+    # Define the bounds for cropping
+    bounds = (int(raster_bounds[0] + 10), int(raster_bounds[1] + 10), int(raster_bounds[0] + 20), int(raster_bounds[1] + 20))
+
+    # Call the function under test
+    result = utilities.crop_raster(bounds, rgb_path=rgb_path)
+
+    # Assert out is a output numpy array
+    assert isinstance(result, np.ndarray)

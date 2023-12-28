@@ -306,9 +306,12 @@ def shapefile_to_annotations(shapefile,
         raster_crs = src.crs
 
     # Check matching the crs
-    if not gdf.crs.to_string() == raster_crs.to_string():
-        raise ValueError("The shapefile crs {} does not match the image crs {}".format(
-            gdf.crs, src.crs))
+    if gdf.crs is not None:
+        if raster_crs is None:
+            raise ValueError("Shapefile has a crs, but raster does not. Please add a crs to the raster.")
+        if not gdf.crs.to_string() == raster_crs.to_string():
+            raise ValueError("The shapefile crs {} does not match the image crs {}".format(
+                gdf.crs, src.crs))
 
     if src.crs is not None:
         print("CRS of shapefile is {}".format(src.crs))
@@ -397,6 +400,54 @@ def pandas_to_geopandas(df):
                           
     return df
 
+def crop_raster(bounds, rgb_path=None, savedir=None, filename=None):
+    """
+    Crop a raster to a bounding box
+    Args:
+        bounds: a tuple of (left, bottom, right, top) bounds
+        rgb_path: path to the rgb image
+        savedir: directory to save the crop
+        filename: filename to save the crop "{}.tif".format(filename)"
+    Returns:
+        filename: path to the saved crop, if savedir specified
+        img: a numpy array of the crop, if savedir not specified
+    """
+    left, bottom, right, top = bounds 
+    src = rasterio.open(rgb_path)
+    img = src.read(window=rasterio.windows.from_bounds(left, bottom, right, top, transform=src.transform)) 
+    cropped_transform = rasterio.windows.transform(rasterio.windows.from_bounds(left, bottom, right, top, transform=src.transform), src.transform)
+    if img.size == 0:
+        raise ValueError("Bounds {} does not create a valid crop for source {}".format(bounds, src.transform))    
+    if savedir:
+        res = src.res[0]
+        height = (top - bottom)/res
+        width = (right - left)/res                 
+        filename = "{}/{}.tif".format(savedir, filename)
+        # Write the cropped image to disk with transform
+        with rasterio.open(filename, "w", driver="GTiff",height=height, width=width, count=img.shape[0], dtype=img.dtype, transform=cropped_transform) as dst:
+            dst.write(img)
+    if savedir:
+        return filename
+    else:
+        return img   
+
+def crop_annotations_to_bounds(gdf, bounds):
+    """
+    Crop a geodataframe of annotations to a bounding box
+    Args:
+        gdf: a geodataframe of annotations
+        bounds: a tuple of (left, bottom, right, top) bounds
+    Returns:
+        gdf: a geodataframe of annotations cropped to the bounds
+    """
+    # unpack image bounds
+    left, bottom, right, top = bounds
+    
+    # Crop the annotations
+    gdf.geometry = gdf.geometry.translate(xoff=-left, yoff=-bottom)
+    
+    return gdf
+
 def geo_to_image_coordinates(gdf, image_bounds, image_resolution):
     """
     Convert from projected coordinates to image coordinates
@@ -405,13 +456,14 @@ def geo_to_image_coordinates(gdf, image_bounds, image_resolution):
         image_bounds: bounds of the image
         image_resolution: resolution of the image
     Returns:
-        gdf: a geopandas dataframe with the transformed to image origin
+        gdf: a geopandas dataframe with the transformed to image origin. CRS is removed
         """
     
     # unpack image bounds
     left, bottom, right, top = image_bounds
     gdf.geometry = gdf.geometry.translate(xoff=-left, yoff=-bottom)
     gdf.geometry = gdf.geometry.scale(xfact=1/image_resolution, yfact=1/image_resolution, origin=(0,0))
+    gdf.crs = None
 
     return gdf
 
