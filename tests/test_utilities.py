@@ -253,3 +253,27 @@ def test_crop_raster_no_savedir(tmpdir):
 
     # Assert out is a output numpy array
     assert isinstance(result, np.ndarray)
+
+def test_crop_raster_png_unprojected(tmpdir):
+    # Define the bounds for cropping
+    bounds = (0, 0, 100, 100)
+
+    # Set the paths
+    rgb_path = get_data("OSBS_029.png")
+    savedir = str(tmpdir)
+    filename = "crop"
+
+    # Call the function under test
+    result = utilities.crop_raster(bounds, rgb_path=rgb_path, savedir=savedir, filename=filename, driver="PNG")
+
+    # Assert the output filename
+    expected_filename = os.path.join(savedir, "crop.png")
+    assert result == expected_filename
+
+    # Assert the saved crop
+    with rio.open(result) as src:
+        # Assert the driver is PNG
+        assert src.driver == "PNG"
+
+        # Assert the crs is not present
+        assert src.crs is None

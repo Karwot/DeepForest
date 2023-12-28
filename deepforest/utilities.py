@@ -13,6 +13,7 @@ import shapely
 import xmltodict
 import yaml
 from tqdm import tqdm
+from PIL import Image
 
 from deepforest import _ROOT
 import geopandas as gpd
@@ -400,32 +401,57 @@ def pandas_to_geopandas(df):
                           
     return df
 
-def crop_raster(bounds, rgb_path=None, savedir=None, filename=None):
+def crop_raster(bounds, rgb_path=None, savedir=None, filename=None, driver="GTiff"):
     """
-    Crop a raster to a bounding box
+    Crop a raster to a bounding box, save as projected or unprojected crop
     Args:
         bounds: a tuple of (left, bottom, right, top) bounds
         rgb_path: path to the rgb image
         savedir: directory to save the crop
         filename: filename to save the crop "{}.tif".format(filename)"
+        driver: rasterio driver to use, default to GTiff, can be 'GTiff' for projected data or 'PNG' unprojected data
     Returns:
         filename: path to the saved crop, if savedir specified
         img: a numpy array of the crop, if savedir not specified
     """
     left, bottom, right, top = bounds 
     src = rasterio.open(rgb_path)
-    img = src.read(window=rasterio.windows.from_bounds(left, bottom, right, top, transform=src.transform)) 
-    cropped_transform = rasterio.windows.transform(rasterio.windows.from_bounds(left, bottom, right, top, transform=src.transform), src.transform)
+    if src.crs is None:
+        # Read unprojected data using PIL and crop numpy array
+        img = np.array(Image.open(rgb_path))
+        img = img[bottom:top, left:right, :]
+        img = np.rollaxis(img, 2, 0)
+        cropped_transform = None
+        if driver == "GTiff":
+            warnings.warn("Driver {} not supported for unprojected data, setting to 'PNG',".format(driver), UserWarning)
+            driver = "PNG"
+    else:
+        # Read projected data using rasterio and crop
+        img = src.read(window=rasterio.windows.from_bounds(left, bottom, right, top, transform=src.transform)) 
+        cropped_transform = rasterio.windows.transform(rasterio.windows.from_bounds(left, bottom, right, top, transform=src.transform), src.transform)
     if img.size == 0:
         raise ValueError("Bounds {} does not create a valid crop for source {}".format(bounds, src.transform))    
     if savedir:
         res = src.res[0]
         height = (top - bottom)/res
         width = (right - left)/res                 
-        filename = "{}/{}.tif".format(savedir, filename)
+        
         # Write the cropped image to disk with transform
-        with rasterio.open(filename, "w", driver="GTiff",height=height, width=width, count=img.shape[0], dtype=img.dtype, transform=cropped_transform) as dst:
-            dst.write(img)
+        if not os.path.exists(savedir):
+            os.makedirs(savedir)
+
+        if driver == "GTiff":
+            filename = "{}/{}.tif".format(savedir, filename)
+            with rasterio.open(filename, "w", driver="GTiff",height=height, width=width, count=img.shape[0], dtype=img.dtype, transform=cropped_transform) as dst:
+                dst.write(img)
+        elif driver == "PNG":
+            # PNG driver does not support transform
+            filename = "{}/{}.png".format(savedir, filename)
+            with rasterio.open(filename, "w", driver="PNG",height=height, width=width, count=img.shape[0], dtype=img.dtype) as dst:
+                dst.write(img)
+        else:
+            raise ValueError("Driver {} not supported".format(driver))
+        
     if savedir:
         return filename
     else:
