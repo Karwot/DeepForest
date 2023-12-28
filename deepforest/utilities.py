@@ -330,7 +330,7 @@ def shapefile_to_annotations(shapefile,
 
     return gdf
 
-def determine_geometry_type(df):
+def determine_geometry_type(df, verbose=True):
     """Determine the geometry type of a geodataframe
     Args:
         df: a pandas dataframe
@@ -352,8 +352,9 @@ def determine_geometry_type(df):
         raise ValueError("Could not determine geometry type from columns {}".format(columns))
 
     # Report number of annotations, unique images and geometry type
-    print("Found {} annotations in {} unique images with {} geometry type".format(
-        df.shape[0], df.image_path.unique().shape[0], geometry_type))
+    if verbose:
+        print("Found {} annotations in {} unique images with {} geometry type".format(
+            df.shape[0], df.image_path.unique().shape[0], geometry_type))
     
     return geometry_type
 
