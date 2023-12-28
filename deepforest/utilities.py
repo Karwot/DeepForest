@@ -289,7 +289,7 @@ def shapefile_to_annotations(shapefile,
     if isinstance(shapefile, str):
         gdf = gpd.read_file(shapefile)
     else:
-        gdf = shapefile
+        gdf = shapefile.copy(deep=True)
 
     # Determine geometry type and report to user
     if gdf.geometry.type.unique().shape[0] > 1:
@@ -410,7 +410,7 @@ def geo_to_image_coordinates(gdf, image_bounds, image_resolution):
     
     # unpack image bounds
     left, bottom, right, top = image_bounds
-    gdf.geometry = gdf.geometry.translate(xoff=-left, yoff=-top)
+    gdf.geometry = gdf.geometry.translate(xoff=-left, yoff=-bottom)
     gdf.geometry = gdf.geometry.scale(xfact=1/image_resolution, yfact=1/image_resolution, origin=(0,0))
 
     return gdf

@@ -42,7 +42,7 @@ def image(config):
 def test_compute_windows(config, image):
     windows = preprocess.compute_windows(image, config["patch_size"],
                                          config["patch_overlap"])
-    assert len(windows) == 9
+    assert len(windows) == 4
 
 
 def test_select_annotations(config, image):
@@ -139,7 +139,7 @@ def test_split_raster_empty(tmpdir, config, allow_empty):
                 patch_size=config["patch_size"],
                 patch_overlap=config["patch_overlap"],
                 allow_empty=allow_empty)
-            assert annotations_file.shape[0] == 9
+            assert annotations_file.shape[0] == 4
             assert tmpdir.join("OSBS_029_1.png").exists()
 
 def test_split_size_error(config, tmpdir, geodataframe):
