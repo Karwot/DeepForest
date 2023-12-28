@@ -30,7 +30,7 @@ def config():
 @pytest.fixture()
 def geodataframe():
     csv_file = get_data("OSBS_029.csv")
-    annotations = utilities.pandas_to_geopandas(csv_file)
+    annotations = utilities.read_file(csv_file)
     return annotations
 
 @pytest.fixture()
@@ -48,7 +48,7 @@ def test_compute_windows(config, image):
 def test_select_annotations(config, image):
     windows = preprocess.compute_windows(image, patch_size=300, patch_overlap=0.5)
     csv_file = get_data("OSBS_029.csv")
-    image_annotations = utilities.pandas_to_geopandas(csv_file)
+    image_annotations = utilities.read_file(csv_file)
 
     selected_annotations = preprocess.select_annotations(image_annotations,
                                                          window = windows[0])

@@ -16,7 +16,7 @@ import geopandas as gpd
 from deepforest.utilities import pandas_to_geopandas
 from shapely import geometry
 import geopandas as gpd
-from deepforest.utilities import pandas_to_geopandas
+from deepforest.utilities import read_file
 from shapely import geometry
 
 def preprocess_image(image):
@@ -208,7 +208,7 @@ def split_raster(annotations_file=None,
     if annotations_file is None:
         allow_empty = True
     elif isinstance(annotations_file, str):
-        annotations = pandas_to_geopandas(annotations_file)
+        annotations = read_file(annotations_file)
     elif isinstance(annotations_file, gpd.GeoDataFrame):
         annotations = annotations_file
     else:
