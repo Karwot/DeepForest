@@ -384,7 +384,7 @@ def read_file(input):
         elif isinstance(input, gpd.GeoDataFrame):
             df = input.copy(deep=True)
     
-    if isinstance(df, pd.DataFrame):
+    if type(df) == pd.DataFrame:
         # If the geometry column is present, convert to geodataframe directly
         if "geometry" in df.columns:
             df['geometry'] = gpd.GeoSeries.from_wkt(df['geometry'])
