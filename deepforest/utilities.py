@@ -383,7 +383,7 @@ def read_file(input, root_dir=None):
         if isinstance(input, pd.DataFrame):
             df = input.copy(deep=True)
         elif isinstance(input, gpd.GeoDataFrame):
-            df = shapefile_to_annotations(input)
+            return shapefile_to_annotations(input)
     
     if root_dir:
         df["image_path"] = df["image_path"].apply(lambda x: os.path.join(root_dir, x))
