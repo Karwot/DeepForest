@@ -383,11 +383,11 @@ def read_file(input, root_dir=None):
         if isinstance(input, pd.DataFrame):
             df = input.copy(deep=True)
         elif isinstance(input, gpd.GeoDataFrame):
-            df = input.copy(deep=True)
+            df = shapefile_to_annotations(input)
     
     if root_dir:
         df["image_path"] = df["image_path"].apply(lambda x: os.path.join(root_dir, x))
-        
+
     if type(df) == pd.DataFrame:
         # If the geometry column is present, convert to geodataframe directly
         if "geometry" in df.columns:
@@ -411,7 +411,7 @@ def read_file(input, root_dir=None):
                 for x, y in zip(df.x.astype(float), df.y.astype(float))]
             else:
                 raise ValueError("Geometry type {} not supported".format(geom_type))
-            
+
     # convert to geodataframe
     df = gpd.GeoDataFrame(df, geometry='geometry')
     
