@@ -380,10 +380,12 @@ def read_file(input, root_dir=None):
         else:
             raise ValueError("File type {} not supported. DeepForest currently supports .csv, .shp or .xml files. See https://deepforest.readthedocs.io/en/latest/annotation.html ".format(df))
     else:
-        if isinstance(input, pd.DataFrame):
+        if type(input) == pd.DataFrame:
             df = input.copy(deep=True)
-        elif isinstance(input, gpd.GeoDataFrame):
+        elif type(input) == gpd.GeoDataFrame:
             return shapefile_to_annotations(input)
+        else:
+            raise ValueError("Input must be a path to a file, geopandas or a pandas dataframe")
     
     if root_dir:
         df["image_path"] = df["image_path"].apply(lambda x: os.path.join(root_dir, x))
