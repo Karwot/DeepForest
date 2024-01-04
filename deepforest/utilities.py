@@ -361,10 +361,11 @@ def determine_geometry_type(df, verbose=True):
     
     return geometry_type
 
-def read_file(input):
+def read_file(input, root_dir=None):
     """Read a file and return a geopandas dataframe
     Args:
         input: a path to a file or a pandas dataframe
+        root_dir: Optional directory to prepend to the image_path column
     Returns:
         df: a geopandas dataframe with the properly formatted geometry column
     """
@@ -384,6 +385,9 @@ def read_file(input):
         elif isinstance(input, gpd.GeoDataFrame):
             df = input.copy(deep=True)
     
+    if root_dir:
+        df["image_path"] = df["image_path"].apply(lambda x: os.path.join(root_dir, x))
+        
     if type(df) == pd.DataFrame:
         # If the geometry column is present, convert to geodataframe directly
         if "geometry" in df.columns:
