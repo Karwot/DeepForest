@@ -247,10 +247,7 @@ def split_raster(annotations_file=None,
         if crop_annotations.empty:
             if allow_empty:
                 crop_annotations.loc[0, "image_path"] = "{}_{}.png".format(image_basename, index)
-            else:
-                raise ValueError(
-                    "Input file has no overlapping annotations and allow_empty is {}".format(
-                        allow_empty))
+                
         else:
             crop_annotations["image_path"] = "{}_{}.png".format(image_basename, index)
 
