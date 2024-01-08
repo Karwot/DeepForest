@@ -228,3 +228,16 @@ def test_split_raster_with_polygon_annotations(tmpdir, config):
     
     # Assert that the output annotations file is created
     assert tmpdir.join("OSBS_029_0.png").exists()
+
+def test_view_annotation_split(tmpdir, config):
+    """Test that the split annotations can be visualized and mantain location, turn show to True for debugging interactively"""
+    annotations = get_data("2019_YELL_2_541000_4977000_image_crop.xml")
+    gdf = utilities.read_file(annotations)
+    path_to_raster = get_data("2019_YELL_2_541000_4977000_image_crop.png")
+    split_annotations = preprocess.split_raster(gdf, path_to_raster=path_to_raster, save_dir=tmpdir, patch_size=300, patch_overlap=0.5)
+    images = visualize.plot_prediction_dataframe(split_annotations, root_dir=tmpdir, savedir=tmpdir)
+    # View the images
+    for image in images:
+        im = Image.open(image)
+        im.show()
+
