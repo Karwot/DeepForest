@@ -69,7 +69,6 @@ def select_annotations(annotations, window):
     # Create a shapely box from the window
     window_box = geometry.box(window_xmin, window_ymin, window_xmin + w, window_ymin + h)
     selected_annotations = annotations[annotations.intersects(window_box)]
-    selected_annotations.geometry = selected_annotations.geometry.translate(xoff=-window_xmin, yoff=-window_ymin)
 
     # cut off any annotations over the border
     original_area = selected_annotations.geometry.area
@@ -85,7 +84,9 @@ def select_annotations(annotations, window):
         # Only keep clipped boxes if they are more than 50% of the original size.
         clipped_area = clipped_annotations.geometry.area
         clipped_annotations = clipped_annotations[(clipped_area/original_area) > 0.5]
-        
+    
+    clipped_annotations.geometry = clipped_annotations.geometry.translate(xoff=-window_xmin, yoff=-window_ymin)
+
     return clipped_annotations
 
 def save_crop(base_dir, image_name, index, crop):
@@ -247,7 +248,8 @@ def split_raster(annotations_file=None,
         if crop_annotations.empty:
             if allow_empty:
                 crop_annotations.loc[0, "image_path"] = "{}_{}.png".format(image_basename, index)
-                
+            else:
+                continue
         else:
             crop_annotations["image_path"] = "{}_{}.png".format(image_basename, index)
 
