@@ -137,3 +137,16 @@ def test_plot_predictions_geometry_points():
     # Assert that the result is an image with the polygons plotted
     assert isinstance(result, np.ndarray)
     assert result.shape == (700, 700, 3)
+
+def test_plot_prediction_dataframe_from_predict_image(m, tmpdir):
+    # Load an image
+    image_path = get_data("OSBS_029.tif")
+    boxes = m.predict_image(path=image_path)
+
+    # Call the plot_prediction_dataframe function
+    result = visualize.plot_prediction_dataframe(boxes, savedir=tmpdir, root_dir=os.path.dirname(image_path))
+
+    # Assert that the result is a list of filenames
+    assert isinstance(result, list)
+    assert all([isinstance(x, str) for x in result])
+    assert all([os.path.exists(x) for x in result])

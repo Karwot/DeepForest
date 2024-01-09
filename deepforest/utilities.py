@@ -322,7 +322,7 @@ def shapefile_to_annotations(shapefile,
 
     if src.crs is not None:
         print("CRS of shapefile is {}".format(src.crs))
-        gdf = geo_to_image_coordinates(gdf,src.bounds, src.res[0])
+        gdf = geo_to_image_coordinates(gdf, src.bounds, src.res[0])
 
     # check for label column
     if "label" not in gdf.columns:
@@ -509,7 +509,7 @@ def geo_to_image_coordinates(gdf, image_bounds, image_resolution):
     
     # unpack image bounds
     left, bottom, right, top = image_bounds
-    gdf.geometry = gdf.geometry.translate(xoff=-left, yoff=-bottom)
+    gdf.geometry = gdf.geometry.translate(xoff=-left, yoff=-top)
     gdf.geometry = gdf.geometry.scale(xfact=1/image_resolution, yfact=1/image_resolution, origin=(0,0))
     gdf.crs = None
 

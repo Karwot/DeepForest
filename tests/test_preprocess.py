@@ -262,6 +262,7 @@ def test_split_raster_from_shp(tmpdir):
     split_annotations = preprocess.split_raster(
         annotations_file=annotations_file,
         path_to_raster=path_to_raster, save_dir=tmpdir, root_dir=os.path.dirname(path_to_raster), patch_size=300)
+    
     assert not split_annotations.empty
 
     # Plot labels
