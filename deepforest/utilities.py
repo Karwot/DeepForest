@@ -271,14 +271,15 @@ def convert_point_to_bbox(gdf, buffer_size):
     return gdf
 
 def shapefile_to_annotations(shapefile,
-                             rgb=None):
+                             rgb=None,
+                             root_dir=None):
     """
     Convert a shapefile of annotations into annotations csv file for DeepForest training and evaluation
     
     Args:
         shapefile: Path to a shapefile on disk. If a label column is present, it will be used, else all labels are assumed to be "Tree"
         rgb: Path to the RGB image on disk
-        savedir: Directory to save csv files
+        root_dir: Optional directory to prepend to the image_path column        
     Returns:
         results: a pandas dataframe
     """
@@ -304,6 +305,8 @@ def shapefile_to_annotations(shapefile,
         print("Geometry type of shapefile is {}".format(geometry_type))
 
     # raster bounds
+    if root_dir:
+        rgb = os.path.join(root_dir, rgb)
     with rasterio.open(rgb) as src:
         left, bottom, right, top = src.bounds
         resolution = src.res[0]
@@ -374,7 +377,7 @@ def read_file(input, root_dir=None):
         if input.endswith(".csv"):
             df = pd.read_csv(input)
         elif input.endswith(".shp"):
-            df = shapefile_to_annotations(input)
+            df = shapefile_to_annotations(input, root_dir=root_dir)
         elif input.endswith(".xml"):
             df = xml_to_annotations(input)
         else:
@@ -383,12 +386,9 @@ def read_file(input, root_dir=None):
         if type(input) == pd.DataFrame:
             df = input.copy(deep=True)
         elif type(input) == gpd.GeoDataFrame:
-            return shapefile_to_annotations(input)
+            return shapefile_to_annotations(input, root_dir=root_dir)
         else:
             raise ValueError("Input must be a path to a file, geopandas or a pandas dataframe")
-    
-    if root_dir:
-        df["image_path"] = df["image_path"].apply(lambda x: os.path.join(root_dir, x))
 
     if type(df) == pd.DataFrame:
         # If the geometry column is present, convert to geodataframe directly
@@ -562,8 +562,6 @@ def image_to_geo_coordinates(gdf, root_dir, projected=True, flip_y_axis=False):
     Args:
         gdf: a geodataframe, see pandas_to_geopandas
         root_dir: directory of images to lookup image_path column
-        projected: If True, convert from image to geographic coordinates, if False, keep in image coordinate system
-        flip_y_axis: If True, reflect predictions over y axis to align with raster data in QGIS, which uses a negative y origin compared to numpy. See https://gis.stackexchange.com/questions/306684/why-does-qgis-use-negative-y-spacing-in-the-default-raster-geotransform
     Returns:
         df: a geospatial dataframe with the boxes optionally transformed to the target crs
     """
@@ -588,14 +586,18 @@ def image_to_geo_coordinates(gdf, root_dir, projected=True, flip_y_axis=False):
         pixelSizeX, pixelSizeY = dataset.res
         crs = dataset.crs
         transform = dataset.transform
-
-        gdf.geometry = gdf.geometry.translate(xoff=left, yoff=top)
+        
+        gdf.geometry = gdf.geometry.scale(xfact=pixelSizeX, yfact=pixelSizeX, origin=(0,0))
+        gdf.geometry = gdf.geometry.translate(xoff=left, yoff=bottom)
 
         if flip_y_axis:
             # Numpy uses top left 0,0 origin, flip along y axis.
             # See https://gis.stackexchange.com/questions/306684/why-does-qgis-use-negative-y-spacing-in-the-default-raster-geotransform
-            gdf.geometry = gdf.geometry.scale(xfact=pixelSizeX, yfact=pixelSizeX, origin=(0,0))
-    
+            gdf.geometry = gdf.geometry.scale(xfact=1, yfact=-1, origin=(0,0))
+        
+        # Assign crs
+        gdf.crs = crs
+
     return gdf
 
 

@@ -229,15 +229,57 @@ def test_split_raster_with_polygon_annotations(tmpdir, config):
     # Assert that the output annotations file is created
     assert tmpdir.join("OSBS_029_0.png").exists()
 
-def test_view_annotation_split(tmpdir, config):
-    """Test that the split annotations can be visualized and mantain location, turn show to True for debugging interactively"""
-    annotations = get_data("2019_YELL_2_541000_4977000_image_crop.xml")
-    gdf = utilities.read_file(annotations)
-    path_to_raster = get_data("2019_YELL_2_541000_4977000_image_crop.png")
-    split_annotations = preprocess.split_raster(gdf, path_to_raster=path_to_raster, save_dir=tmpdir, patch_size=300, patch_overlap=0.5)
+def test_split_raster_from_csv(tmpdir):
+    """Read in annotations, convert to a projected shapefile, read back in and crop, the output annotations should still be mantained in logical place"""
+    annotations = get_data("2018_SJER_3_252000_4107000_image_477.csv")
+    path_to_raster = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+
+    # Check original data
+    split_annotations = preprocess.split_raster(
+        annotations_file=annotations,
+        path_to_raster=path_to_raster,
+        save_dir=tmpdir,
+        root_dir=os.path.dirname(path_to_raster),
+        patch_size=300)
+    assert not split_annotations.empty
+    
+    # Plot labels
     images = visualize.plot_prediction_dataframe(split_annotations, root_dir=tmpdir, savedir=tmpdir)
-    # View the images
+
     for image in images:
         im = Image.open(image)
         im.show()
+
+def test_split_raster_from_shp(tmpdir):
+    annotations = get_data("2018_SJER_3_252000_4107000_image_477.csv")
+    path_to_raster = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+    gdf = utilities.read_file(annotations)    
+    geo_coords = utilities.image_to_geo_coordinates(gdf, root_dir=os.path.dirname(path_to_raster))
+    annotations_file = tmpdir.join("projected_annotations.shp").strpath
+    geo_coords.to_file(annotations_file)
+
+    # Call split_raster function
+    split_annotations = preprocess.split_raster(
+        annotations_file=annotations_file,
+        path_to_raster=path_to_raster, save_dir=tmpdir, root_dir=os.path.dirname(path_to_raster), patch_size=300)
+    assert not split_annotations.empty
+
+    # Plot labels
+    images = visualize.plot_prediction_dataframe(split_annotations, root_dir=tmpdir, savedir=tmpdir)
+
+    for image in images:
+        im = Image.open(image)
+        im.show()
+
+# def test_view_annotation_split(tmpdir, config):
+#     """Test that the split annotations can be visualized and mantain location, turn show to True for debugging interactively"""
+#     annotations = get_data("2019_YELL_2_541000_4977000_image_crop.xml")
+#     gdf = utilities.read_file(annotations)
+#     path_to_raster = get_data("2019_YELL_2_541000_4977000_image_crop.png")
+#     split_annotations = preprocess.split_raster(gdf, path_to_raster=path_to_raster, save_dir=tmpdir, patch_size=300, patch_overlap=0.5)
+#     images = visualize.plot_prediction_dataframe(split_annotations, root_dir=tmpdir, savedir=tmpdir)
+#     # View the images
+#     for image in images:
+#         im = Image.open(image)
+#         im.show()
 

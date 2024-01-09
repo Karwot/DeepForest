@@ -4,15 +4,21 @@ import os
 import pytest
 import pandas as pd
 import rasterio as rio
+from rasterio.plot import show
 from shapely import geometry
 import geopandas as gpd
+from matplotlib import pyplot as plt
 
 from deepforest import get_data
-from deepforest import utilities
+from deepforest import utilities, visualize
 from deepforest import main
+
 
 #import general model fixture
 from .conftest import download_release
+
+
+from PIL import Image
 
 @pytest.fixture()
 def config():
@@ -184,7 +190,6 @@ def test_crop_raster_invalid_crop(tmpdir):
     with pytest.raises(ValueError):
         result = utilities.crop_raster(bounds, rgb_path=rgb_path, savedir=tmpdir, filename="crop")
 
-
 def test_crop_raster_no_savedir(tmpdir):
     rgb_path = get_data("2018_SJER_3_252000_4107000_image_477.tif")
     raster_bounds = rio.open(rgb_path).bounds
@@ -221,3 +226,31 @@ def test_crop_raster_png_unprojected(tmpdir):
 
         # Assert the crs is not present
         assert src.crs is None
+
+def test_image_to_geo_coordinates(tmpdir):
+    annotations = get_data("2018_SJER_3_252000_4107000_image_477.csv")
+    path_to_raster = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+
+    # Convert to image coordinates
+    gdf = utilities.read_file(annotations)   
+    images = visualize.plot_prediction_dataframe(gdf, root_dir=os.path.dirname(path_to_raster), savedir=tmpdir)
+
+    # Confirm it has no crs
+    assert gdf.crs is None
+
+    # Confirm the image coordinates are correct
+    for image in images:
+        im = Image.open(image)
+        im.show(title="before")
+    
+    # Convert to geo coordinates
+    src = rio.open(path_to_raster)
+    geo_coords = utilities.image_to_geo_coordinates(gdf, root_dir=os.path.dirname(path_to_raster))
+    src_window = geometry.box(*src.bounds)
+    assert geo_coords.intersects(src_window).shape[0] == pd.read_csv(annotations).shape[0]  
+
+    # Plot using geopandas
+    fig, ax = plt.subplots(figsize=(10, 10))
+    gpd.GeoSeries(src_window).plot(ax=ax, color="blue", alpha=0.5)
+    geo_coords.plot(ax=ax, color="red")
+    plt.show()
