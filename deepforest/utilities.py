@@ -343,8 +343,17 @@ def determine_geometry_type(df, verbose=True):
     Returns:
         geometry_type: a string of the geometry type
     """
-     
     columns = df.columns
+    if "geometry" in columns:
+        geometry_type = df.geometry.type.unique()[0]
+        if geometry_type == "Point":
+            return 'point'
+        if geometry_type == "Polygon":
+            if (df.geometry.area == df.envelope.area).all():
+                return 'box'
+            else:
+                return 'polygon'
+
     if "Polygon" in columns:
         raise ValueError("Polygon column is capitalized, please change to lowercase")
     
@@ -506,14 +515,20 @@ def geo_to_image_coordinates(gdf, image_bounds, image_resolution):
     Returns:
         gdf: a geopandas dataframe with the transformed to image origin. CRS is removed
         """
-    
+    transformed_gdf = gdf.copy(deep=True)
     # unpack image bounds
     left, bottom, right, top = image_bounds
-    gdf.geometry = gdf.geometry.translate(xoff=-left, yoff=-top)
-    gdf.geometry = gdf.geometry.scale(xfact=1/image_resolution, yfact=1/image_resolution, origin=(0,0))
-    gdf.crs = None
+    
+    #Is the CRS in the Northern or Southern hemisphere?
+    hemisphere = transformed_gdf.crs.name[-1]
+    if hemisphere == "N": 
+        transformed_gdf.geometry = transformed_gdf.geometry.translate(xoff=-left, yoff=-bottom)
+    if hemisphere == "S":
+        transformed_gdf.geometry = transformed_gdf.geometry.translate(xoff=-left, yoff=-bottom)
+    transformed_gdf.geometry = transformed_gdf.geometry.scale(xfact=1/image_resolution, yfact=1/image_resolution, origin=(0,0))
+    transformed_gdf.crs = None
 
-    return gdf
+    return transformed_gdf
 
 def round_with_floats(x):
     """Check if string x is float or int, return int, rounded if needed."""
@@ -555,7 +570,7 @@ def check_image(image):
                          "found image with shape {}".format(image.shape))
 
 
-def image_to_geo_coordinates(gdf, root_dir, projected=True, flip_y_axis=False):
+def image_to_geo_coordinates(gdf, root_dir, flip_y_axis=False):
     """
     Convert from image coordinates to geographic coordinates
     Note that this assumes df is just a single plot being passed to this function
@@ -565,14 +580,8 @@ def image_to_geo_coordinates(gdf, root_dir, projected=True, flip_y_axis=False):
     Returns:
         df: a geospatial dataframe with the boxes optionally transformed to the target crs
     """
-    # Raise a warning and confirm if a user sets projected to True when flip_y_axis is True.
-    if flip_y_axis and projected:
-        warnings.warn(
-            "flip_y_axis is {}, and projected is {}. In most cases, projected should be False when inverting y axis. Setting projected=False"
-            .format(flip_y_axis, projected), UserWarning)
-        projected = False
-
-    plot_names = gdf.image_path.unique()
+    transformed_gdf = gdf.copy(deep=True)
+    plot_names = transformed_gdf.image_path.unique()
     if len(plot_names) > 1:
         raise ValueError("This function projects a single plots worth of data. "
                          "Multiple plot names found {}".format(plot_names))
@@ -585,20 +594,52 @@ def image_to_geo_coordinates(gdf, root_dir, projected=True, flip_y_axis=False):
         left, bottom, right, top = bounds
         pixelSizeX, pixelSizeY = dataset.res
         crs = dataset.crs
-        transform = dataset.transform
-        
-        gdf.geometry = gdf.geometry.scale(xfact=pixelSizeX, yfact=pixelSizeX, origin=(0,0))
-        gdf.geometry = gdf.geometry.translate(xoff=left, yoff=bottom)
 
+        geom_type = determine_geometry_type(transformed_gdf)
+        projected_geometry = []
+        if geom_type == "box":
+            # Convert image pixel locations to geographic coordinates
+            coordinates = transformed_gdf.geometry.bounds
+            xmin_coords, ymin_coords = rasterio.transform.xy(transform=dataset.transform,
+                                                            rows=coordinates.miny,
+                                                            cols=coordinates.minx,
+                                                            offset='center')
+
+            xmax_coords, ymax_coords = rasterio.transform.xy(transform=dataset.transform,
+                                                            rows=coordinates.maxy,
+                                                            cols=coordinates.maxx,
+                                                            offset='center')
+    
+            for left, bottom, right, top in zip(xmin_coords, ymin_coords, xmax_coords, ymax_coords):
+                geom = shapely.geometry.box(left, bottom, right, top)
+                projected_geometry.append(geom)
+        elif geom_type == "polygon":
+            for geom in transformed_gdf.geometry:
+                polygon_vertices = []
+                for x,y in geom.exterior.coords:
+                    projected_vertices = rasterio.transform.xy(transform=dataset.transform,  rows=y, cols=x, offset='center')
+                    polygon_vertices.append(projected_vertices)
+                geom = shapely.geometry.Polygon(polygon_vertices)
+                projected_geometry.append(geom)
+        elif geom_type == "point":
+            x_coords, y_coords = rasterio.transform.xy(transform=dataset.transform,
+                                                rows=transformed_gdf.geometry.y,
+                                                cols=transformed_gdf.geometry.x,
+                                                offset='center')
+            for x,y in zip(x_coords, y_coords):
+                geom = shapely.geometry.Point(x, y)
+                projected_geometry.append(geom)
+
+        transformed_gdf.geometry = projected_geometry
         if flip_y_axis:
             # Numpy uses top left 0,0 origin, flip along y axis.
             # See https://gis.stackexchange.com/questions/306684/why-does-qgis-use-negative-y-spacing-in-the-default-raster-geotransform
-            gdf.geometry = gdf.geometry.scale(xfact=1, yfact=-1, origin=(0,0))
+            transformed_gdf.geometry = transformed_gdf.geometry.scale(xfact=1, yfact=-1, origin=(0,0))
         
         # Assign crs
-        gdf.crs = crs
+        transformed_gdf.crs = crs
 
-    return gdf
+    return transformed_gdf
 
 
 def collate_fn(batch):

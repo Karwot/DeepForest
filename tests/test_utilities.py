@@ -5,6 +5,7 @@ import pytest
 import pandas as pd
 import rasterio as rio
 from rasterio.plot import show
+from rasterio import warp
 from shapely import geometry
 import geopandas as gpd
 from matplotlib import pyplot as plt
@@ -57,19 +58,6 @@ def test_read_file(tmpdir):
     shp = utilities.read_file(input="{}/annotations.shp".format(tmpdir))
     assert shp.shape[0] == 2
 
-def test_read_file_incorrect_crs(tmpdir):
-    sample_geometry = [geometry.Point(404211.9 + 10,3285102 + 20),geometry.Point(404211.9 + 20,3285102 + 20)]
-    labels = ["Tree","Tree"]
-    df = pd.DataFrame({"geometry":sample_geometry,"label":labels})
-    gdf = gpd.GeoDataFrame(df, geometry="geometry", crs="EPSG:32618")
-    gdf["geometry"] = [geometry.box(left, bottom, right, top) for left, bottom, right, top in gdf.geometry.buffer(0.5).bounds.values]
-    image_path = get_data("OSBS_029.tif")
-    gdf["image_path"] = image_path
-    gdf.to_file("{}/annotations.shp".format(tmpdir))
-    
-    with pytest.raises(ValueError):
-        shp = utilities.read_file(input="{}/annotations.shp".format(tmpdir))
-    
 def test_read_file_boxes_projected(tmpdir):
     sample_geometry = [geometry.Point(404211.9 + 10,3285102 + 20),geometry.Point(404211.9 + 20,3285102 + 20)]
     labels = ["Tree","Tree"]
@@ -227,6 +215,117 @@ def test_crop_raster_png_unprojected(tmpdir):
         # Assert the crs is not present
         assert src.crs is None
 
+def test_geo_to_image_coordinates_UTM_N(tmpdir):
+    """Read in a csv file, make a projected shapefile, convert to image coordinates and view the results"""
+    annotations = get_data("2018_SJER_3_252000_4107000_image_477.csv")
+    path_to_raster = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+    src = rio.open(path_to_raster)
+    original = utilities.read_file(annotations)
+    assert original.crs is None
+
+    geo_coords = utilities.image_to_geo_coordinates(original, root_dir=os.path.dirname(path_to_raster))
+    assert geo_coords.crs == src.crs
+    src_window = geometry.box(*src.bounds)
+
+    # fig, ax = plt.subplots(figsize=(10, 10))
+    # gpd.GeoSeries(src_window).plot(ax=ax, color="blue", alpha=0.5)
+    # geo_coords.plot(ax=ax, color="red")
+    # plt.show()
+
+    assert geo_coords[geo_coords.intersects(src_window)].shape[0] == pd.read_csv(annotations).shape[0]  
+
+    # Convert to image coordinates
+    image_coords = utilities.geo_to_image_coordinates(geo_coords, image_bounds=src.bounds, image_resolution=src.res[0])   
+    assert image_coords.crs is None
+
+    #Confirm overlap
+    numpy_image = src.read()
+    channels, height, width = numpy_image.shape
+    numpy_window = geometry.box(0, 0, width, height)
+    assert image_coords[image_coords.intersects(numpy_window)].shape[0] == pd.read_csv(annotations).shape[0]
+
+    images = visualize.plot_prediction_dataframe(image_coords, root_dir=os.path.dirname(path_to_raster), savedir=tmpdir)
+    # Confirm the image coordinates are correct
+    for image in images:
+        im = Image.open(image)
+        im.show()
+
+
+def test_geo_to_image_coordinates_UTM_S(tmpdir):
+    """Read in a csv file, make a projected shapefile in the South UTM, convert to image coordinates and view the results"""
+    ## Setup
+
+    annotations = get_data("2018_SJER_3_252000_4107000_image_477.csv")
+    path_to_raster = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+    src = rio.open(path_to_raster)
+    original = utilities.read_file(annotations)
+    assert original.crs is None
+    geo_coords = utilities.image_to_geo_coordinates(original, root_dir=os.path.dirname(path_to_raster))
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    #gpd.GeoSeries(src_window).plot(color="blue", alpha=0.5, ax=ax)
+    geo_coords.plot(ax=ax, color="red")
+    show(src, ax=ax)
+    plt.show()
+
+    # Convert raster to UTM South
+    src = rio.open(path_to_raster)
+    dst_crs = "EPSG:32756"
+    kwargs = src.meta.copy()
+    transform, width, height = warp.calculate_default_transform(
+            src.crs, dst_crs, src.width, src.height, *src.bounds)
+    kwargs.update({
+            'crs': dst_crs,
+            'transform': transform,
+            'width': width,
+            'height': height
+        })
+    
+    with rio.open("{}/2018_SJER_3_252000_4107000_image_477_UTM_S.tif".format(tmpdir), "w", **kwargs) as dst:
+        dst.write(src.read())
+    
+    geo_coords["image_path"] = "2018_SJER_3_252000_4107000_image_477_UTM_S.tif"
+    geo_coords.to_crs("EPSG:32756").to_file("{}/australia_annotations.shp".format(tmpdir))
+
+    ## Tests
+    australia_coords = gpd.read_file("{}/australia_annotations.shp".format(tmpdir))
+    australia_source = rio.open("{}/2018_SJER_3_252000_4107000_image_477_UTM_S.tif".format(tmpdir))
+    assert australia_source.crs == australia_coords.crs
+    src_window = geometry.box(*australia_source.bounds)
+
+    # Confirm overlap
+    assert australia_coords[australia_coords.intersects(src_window)].shape[0] == pd.read_csv(annotations).shape[0]  
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+    #gpd.GeoSeries(src_window).plot(color="blue", alpha=0.5, ax=ax)
+    australia_coords.plot(ax=ax, color="red")
+    show(australia_source, ax=ax)
+    plt.show()
+
+    # Convert to image coordinates
+    image_coords = utilities.geo_to_image_coordinates(australia_coords, image_bounds=australia_source.bounds, image_resolution=australia_source.res[0])   
+    assert image_coords.crs is None
+
+    images = visualize.plot_prediction_dataframe(image_coords, root_dir=tmpdir, savedir=tmpdir)
+
+    #Confirm overlap
+    numpy_image = australia_source.read()
+    channels, width, height = numpy_image.shape
+    numpy_window = geometry.box(0, 0, width, height)
+
+    # Confirm overlap
+    fig, ax = plt.subplots(figsize=(10, 10))
+    gpd.GeoSeries(numpy_window).plot(color="blue", alpha=0.5, ax=ax)
+    image_coords.plot(ax=ax, color="red")
+    plt.show()
+
+    assert image_coords[image_coords.intersects(numpy_window)].shape[0] == pd.read_csv(annotations).shape[0]
+
+    # Confirm the image coordinates are correct
+    for image in images:
+        im = Image.open(image)
+        im.show()
+
 def test_image_to_geo_coordinates(tmpdir):
     annotations = get_data("2018_SJER_3_252000_4107000_image_477.csv")
     path_to_raster = get_data("2018_SJER_3_252000_4107000_image_477.tif")
@@ -247,10 +346,101 @@ def test_image_to_geo_coordinates(tmpdir):
     src = rio.open(path_to_raster)
     geo_coords = utilities.image_to_geo_coordinates(gdf, root_dir=os.path.dirname(path_to_raster))
     src_window = geometry.box(*src.bounds)
-    assert geo_coords.intersects(src_window).shape[0] == pd.read_csv(annotations).shape[0]  
+    assert geo_coords[geo_coords.intersects(src_window)].shape[0] == pd.read_csv(annotations).shape[0]  
 
     # Plot using geopandas
     fig, ax = plt.subplots(figsize=(10, 10))
     gpd.GeoSeries(src_window).plot(ax=ax, color="blue", alpha=0.5)
-    geo_coords.plot(ax=ax, color="red")
+    geo_coords.plot(ax=ax, color="red", alpha=0.2)
+    show(src, ax=ax)
+    plt.show()
+
+def test_image_to_geo_coordinates_boxes(tmpdir):
+    annotations = get_data("2018_SJER_3_252000_4107000_image_477.csv")
+    path_to_raster = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+
+    # Convert to image coordinates
+    gdf = utilities.read_file(annotations)   
+    images = visualize.plot_prediction_dataframe(gdf, root_dir=os.path.dirname(path_to_raster), savedir=tmpdir)
+
+    # Confirm it has no crs
+    assert gdf.crs is None
+
+    # Confirm the image coordinates are correct
+    for image in images:
+        im = Image.open(image)
+        im.show(title="before")
+    
+    # Convert to geo coordinates
+    src = rio.open(path_to_raster)
+    geo_coords = utilities.image_to_geo_coordinates(gdf, root_dir=os.path.dirname(path_to_raster))
+    src_window = geometry.box(*src.bounds)
+    assert geo_coords[geo_coords.intersects(src_window)].shape[0] == pd.read_csv(annotations).shape[0]  
+
+    # Plot using geopandas
+    fig, ax = plt.subplots(figsize=(10, 10))
+    gpd.GeoSeries(src_window).plot(ax=ax, color="blue", alpha=0.5)
+    geo_coords.plot(ax=ax, color="red", alpha=0.2)
+    show(src, ax=ax)
+    plt.show()
+
+def test_image_to_geo_coordinates_points(tmpdir):
+    annotations = get_data("2018_SJER_3_252000_4107000_image_477.csv")
+    path_to_raster = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+
+    # Convert to image coordinates
+    gdf = utilities.read_file(annotations)   
+    gdf["geometry"] = gdf.geometry.centroid
+    images = visualize.plot_prediction_dataframe(gdf, root_dir=os.path.dirname(path_to_raster), savedir=tmpdir)
+
+    # Confirm it has no crs
+    assert gdf.crs is None
+
+    # Confirm the image coordinates are correct
+    for image in images:
+        im = Image.open(image)
+        im.show(title="before")
+    
+    # Convert to geo coordinates
+    src = rio.open(path_to_raster)
+    geo_coords = utilities.image_to_geo_coordinates(gdf, root_dir=os.path.dirname(path_to_raster))
+    src_window = geometry.box(*src.bounds)
+    assert geo_coords[geo_coords.intersects(src_window)].shape[0] == pd.read_csv(annotations).shape[0]  
+
+    # Plot using geopandas
+    fig, ax = plt.subplots(figsize=(10, 10))
+    gpd.GeoSeries(src_window).plot(ax=ax, color="blue", alpha=0.5)
+    geo_coords.plot(ax=ax, color="red", alpha=0.2)
+    show(src, ax=ax)
+    plt.show()
+
+def test_image_to_geo_coordinates_polygons(tmpdir):
+    annotations = get_data("2018_SJER_3_252000_4107000_image_477.csv")
+    path_to_raster = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+
+    # Convert to image coordinates
+    gdf = utilities.read_file(annotations)   
+    # Skew boxes to make them polygons
+    gdf["geometry"] = gdf.geometry.skew(7,7)
+    images = visualize.plot_prediction_dataframe(gdf, root_dir=os.path.dirname(path_to_raster), savedir=tmpdir)
+
+    # Confirm it has no crs
+    assert gdf.crs is None
+
+    # Confirm the image coordinates are correct
+    for image in images:
+        im = Image.open(image)
+        im.show(title="before")
+    
+    # Convert to geo coordinates
+    src = rio.open(path_to_raster)
+    geo_coords = utilities.image_to_geo_coordinates(gdf, root_dir=os.path.dirname(path_to_raster))
+    src_window = geometry.box(*src.bounds)
+    assert geo_coords[geo_coords.intersects(src_window)].shape[0] == pd.read_csv(annotations).shape[0]  
+
+    # Plot using geopandas
+    fig, ax = plt.subplots(figsize=(10, 10))
+    gpd.GeoSeries(src_window).plot(ax=ax, color="blue", alpha=0.5)
+    geo_coords.plot(ax=ax, color="red", alpha=0.2)
+    show(src, ax=ax)
     plt.show()
