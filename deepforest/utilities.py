@@ -519,13 +519,8 @@ def geo_to_image_coordinates(gdf, image_bounds, image_resolution):
     # unpack image bounds
     left, bottom, right, top = image_bounds
     
-    #Is the CRS in the Northern or Southern hemisphere?
-    hemisphere = transformed_gdf.crs.name[-1]
-    if hemisphere == "N": 
-        transformed_gdf.geometry = transformed_gdf.geometry.translate(xoff=-left, yoff=-bottom)
-    if hemisphere == "S":
-        transformed_gdf.geometry = transformed_gdf.geometry.translate(xoff=-left, yoff=-bottom)
-    transformed_gdf.geometry = transformed_gdf.geometry.scale(xfact=1/image_resolution, yfact=1/image_resolution, origin=(0,0))
+    transformed_gdf.geometry = transformed_gdf.geometry.translate(xoff=-left, yoff=-top)
+    transformed_gdf.geometry = transformed_gdf.geometry.scale(xfact=1/image_resolution, yfact=-1/image_resolution, origin=(0,0))
     transformed_gdf.crs = None
 
     return transformed_gdf

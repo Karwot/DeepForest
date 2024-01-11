@@ -250,77 +250,32 @@ def test_geo_to_image_coordinates_UTM_N(tmpdir):
         im = Image.open(image)
         im.show()
 
-
 def test_geo_to_image_coordinates_UTM_S(tmpdir):
-    """Read in a csv file, make a projected shapefile in the South UTM, convert to image coordinates and view the results"""
-    ## Setup
-
-    annotations = get_data("2018_SJER_3_252000_4107000_image_477.csv")
-    path_to_raster = get_data("2018_SJER_3_252000_4107000_image_477.tif")
+    """Read in a csv file, make a projected shapefile, convert to image coordinates and view the results"""
+    annotations = get_data("australia.shp")
+    path_to_raster = get_data("australia.tif")
     src = rio.open(path_to_raster)
-    original = utilities.read_file(annotations)
-    assert original.crs is None
-    geo_coords = utilities.image_to_geo_coordinates(original, root_dir=os.path.dirname(path_to_raster))
-
-    fig, ax = plt.subplots(figsize=(10, 10))
-    #gpd.GeoSeries(src_window).plot(color="blue", alpha=0.5, ax=ax)
-    geo_coords.plot(ax=ax, color="red")
-    show(src, ax=ax)
-    plt.show()
-
-    # Convert raster to UTM South
-    src = rio.open(path_to_raster)
-    dst_crs = "EPSG:32756"
-    kwargs = src.meta.copy()
-    transform, width, height = warp.calculate_default_transform(
-            src.crs, dst_crs, src.width, src.height, *src.bounds)
-    kwargs.update({
-            'crs': dst_crs,
-            'transform': transform,
-            'width': width,
-            'height': height
-        })
     
-    with rio.open("{}/2018_SJER_3_252000_4107000_image_477_UTM_S.tif".format(tmpdir), "w", **kwargs) as dst:
-        dst.write(src.read())
+    geo_coords = gpd.read_file(annotations)
+    src_window = geometry.box(*src.bounds)
+    #fig, ax = plt.subplots(figsize=(10, 10))
+    #gpd.GeoSeries(src_window).plot(ax=ax, color="blue", alpha=0.5)
+    #geo_coords.plot(ax=ax, color="red")
+    #plt.show()
     
-    geo_coords["image_path"] = "2018_SJER_3_252000_4107000_image_477_UTM_S.tif"
-    geo_coords.to_crs("EPSG:32756").to_file("{}/australia_annotations.shp".format(tmpdir))
-
-    ## Tests
-    australia_coords = gpd.read_file("{}/australia_annotations.shp".format(tmpdir))
-    australia_source = rio.open("{}/2018_SJER_3_252000_4107000_image_477_UTM_S.tif".format(tmpdir))
-    assert australia_source.crs == australia_coords.crs
-    src_window = geometry.box(*australia_source.bounds)
-
-    # Confirm overlap
-    assert australia_coords[australia_coords.intersects(src_window)].shape[0] == pd.read_csv(annotations).shape[0]  
-
-    fig, ax = plt.subplots(figsize=(10, 10))
-    #gpd.GeoSeries(src_window).plot(color="blue", alpha=0.5, ax=ax)
-    australia_coords.plot(ax=ax, color="red")
-    show(australia_source, ax=ax)
-    plt.show()
+    assert geo_coords[geo_coords.intersects(src_window)].shape[0] == gpd.read_file(annotations).shape[0]  
 
     # Convert to image coordinates
-    image_coords = utilities.geo_to_image_coordinates(australia_coords, image_bounds=australia_source.bounds, image_resolution=australia_source.res[0])   
+    image_coords = utilities.geo_to_image_coordinates(geo_coords, image_bounds=src.bounds, image_resolution=src.res[0])   
     assert image_coords.crs is None
 
-    images = visualize.plot_prediction_dataframe(image_coords, root_dir=tmpdir, savedir=tmpdir)
-
     #Confirm overlap
-    numpy_image = australia_source.read()
-    channels, width, height = numpy_image.shape
+    numpy_image = src.read()
+    channels, height, width = numpy_image.shape
     numpy_window = geometry.box(0, 0, width, height)
+    assert image_coords[image_coords.intersects(numpy_window)].shape[0] == gpd.read_file(annotations).shape[0] 
 
-    # Confirm overlap
-    fig, ax = plt.subplots(figsize=(10, 10))
-    gpd.GeoSeries(numpy_window).plot(color="blue", alpha=0.5, ax=ax)
-    image_coords.plot(ax=ax, color="red")
-    plt.show()
-
-    assert image_coords[image_coords.intersects(numpy_window)].shape[0] == pd.read_csv(annotations).shape[0]
-
+    images = visualize.plot_prediction_dataframe(image_coords, root_dir=os.path.dirname(path_to_raster), savedir=tmpdir)
     # Confirm the image coordinates are correct
     for image in images:
         im = Image.open(image)
