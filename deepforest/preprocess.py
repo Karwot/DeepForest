@@ -78,7 +78,7 @@ def select_annotations(annotations, window):
         return clipped_annotations
     
     # For points, keep all annotations.
-    if selected_annotations.iloc[0].geometry.type == "Point":
+    if selected_annotations.iloc[0].geometry.geom_type == "Point":
         return selected_annotations
     else:
         # Only keep clipped boxes if they are more than 50% of the original size.

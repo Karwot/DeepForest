@@ -515,6 +515,10 @@ def geo_to_image_coordinates(gdf, image_bounds, image_resolution):
     Returns:
         gdf: a geopandas dataframe with the transformed to image origin. CRS is removed
         """
+    
+    if len(image_bounds) != 4:
+        raise ValueError("image_bounds must be a tuple of (left, bottom, right, top)")
+
     transformed_gdf = gdf.copy(deep=True)
     # unpack image bounds
     left, bottom, right, top = image_bounds
