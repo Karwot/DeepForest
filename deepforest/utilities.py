@@ -374,7 +374,7 @@ def determine_geometry_type(df, verbose=True):
     return geometry_type
 
 def read_file(input, root_dir=None):
-    """Read a file and return a geopandas dataframe
+    """Read a file and return a geopandas dataframe. This is the main entry point for reading annotations into deepforest.
     Args:
         input: a path to a file or a pandas dataframe
         root_dir: Optional directory to prepend to the image_path column
@@ -546,18 +546,6 @@ def round_with_floats(x):
     return result
 
 
-def check_file(df):
-    """Check a file format for correct column names and structure"""
-
-    if not all(x in df.columns
-               for x in ["image_path", "xmin", "xmax", "ymin", "ymax", "label"]):
-        raise IOError("Input file has incorrect column names, "
-                      "the following columns must exist "
-                      "'image_path','xmin','ymin','xmax','ymax','label'.")
-
-    return df
-
-
 def check_image(image):
     """Check an image is three channel, channel last format
         Args:
@@ -574,7 +562,7 @@ def image_to_geo_coordinates(gdf, root_dir, flip_y_axis=False):
     Convert from image coordinates to geographic coordinates
     Note that this assumes df is just a single plot being passed to this function
     Args:
-        gdf: a geodataframe, see pandas_to_geopandas
+        gdf: a geodataframe
         root_dir: directory of images to lookup image_path column
     Returns:
         df: a geospatial dataframe with the boxes optionally transformed to the target crs

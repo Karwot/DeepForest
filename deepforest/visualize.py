@@ -142,7 +142,7 @@ def plot_predictions(image, df, color=None, thickness=1):
                 cv2.polylines(image, polygon, True, color, thickness=thickness)
             elif geometry_type == "Point":
                 int_coords = lambda x: np.array(x).round().astype(np.int32)
-                cv2.circle(image, int_coords(row["geometry"]), color=color, radius=5, thickness=thickness)
+                cv2.circle(image, (int_coords(row["geometry"].x), int_coords(row["geometry"].y)), color=color, radius=5, thickness=thickness)
             else:
                 raise ValueError("Only polygons and points are supported")
         elif "xmin" in df.columns:

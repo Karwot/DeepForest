@@ -215,7 +215,7 @@ def test_split_raster_with_polygon_annotations(tmpdir, config):
     sample_geometry = [geometry.Polygon([(0, 0), (0, 2), (1, 1), (1, 0), (0, 0)]), geometry.Polygon([(2, 2), (2, 4), (3, 3), (3, 2), (2, 2)])]
     annotations = pd.DataFrame({
         "image_path": ["OSBS_029.tif", "OSBS_029.tif"],
-        "polygon": [sample_geometry[0].to_wkt(), sample_geometry[1].to_wkt()],
+        "polygon": [sample_geometry[0].wkt, sample_geometry[1].wkt],
         "label": ["Tree", "Tree"]
     })
     annotations_file = tmpdir.join("polygon_annotations.csv")

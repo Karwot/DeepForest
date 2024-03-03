@@ -13,7 +13,6 @@ import torch
 import warnings
 import rasterio
 import geopandas as gpd
-from deepforest.utilities import pandas_to_geopandas
 from shapely import geometry
 import geopandas as gpd
 from deepforest.utilities import read_file
@@ -245,24 +244,28 @@ def split_raster(annotations_file=None,
             continue
 
         # Find annotations, image_name is the basename of the path
-        crop_annotations = select_annotations(image_annotations, window = windows[index])
-        
-        if crop_annotations.empty:
-            if allow_empty:
-                crop_annotations.loc[0, "image_path"] = "{}_{}.png".format(image_basename, index)
-            else:
-                continue
-        else:
+        if annotations_file is not None:
+            crop_annotations = select_annotations(image_annotations, window = windows[index])
             crop_annotations["image_path"] = "{}_{}.png".format(image_basename, index)
+            if crop_annotations.empty:
+                if allow_empty:
+                    crop_annotations.loc[0, "image_path"] = "{}_{}.png".format(image_basename, index)
+                else:
+                    continue
+            annotations_files.append(crop_annotations)
 
-        annotations_files.append(crop_annotations)
-        save_crop(save_dir, image_name, index, crop)
+        # Save image crop
+        if allow_empty or crop_annotations is not None:
+            crop_filename = save_crop(save_dir, image_name, index, crop)
+            crop_filenames.append(crop_filename)
     
-    if len(annotations_files) == 0:
+    if annotations_file is None:
+        return crop_filenames
+    elif len(annotations_files) == 0:
         raise ValueError(
             "Input file has no overlapping annotations and allow_empty is {}".format(
                 allow_empty))
-
+    else:
         annotations_files = pd.concat(annotations_files)
 
         # Checkpoint csv files, useful for parallelization
@@ -272,5 +275,3 @@ def split_raster(annotations_file=None,
         annotations_files.to_csv(file_path, index=False, header=True)
 
         return annotations_files
-    else:
-        return crop_filenames
